@@ -3,9 +3,13 @@ import argparse
 import torch
 import tqdm
 from torch.utils.tensorboard import SummaryWriter
+import torch.nn.functional as F
+
+HIDDEN_UNITS = 2000
+THRESHOLD = 2
 
 class ReLUModel(torch.nn.Module):
-    def __init__(self, input_len=10, hidden_layers=3, hidden_units=2000, vocab_dim=30):
+    def __init__(self, input_len=10, hidden_layers=3, hidden_units=HIDDEN_UNITS, vocab_dim=30):
         super().__init__()
         self.vocab_dim = vocab_dim
         self.layers = torch.nn.ModuleList([
@@ -20,19 +24,20 @@ class ReLUModel(torch.nn.Module):
     def forward(self, inputs):
         outs = []
         ins = []
-        layer_input = torch.nn.functional.one_hot(inputs, self.vocab_dim).flatten(1, -1).float()
+        layer_input = F.one_hot(inputs, self.vocab_dim).flatten(1, -1).float()
 
         # Linear layers
         for layer in self.layers:
             inp = layer_input / layer_input.norm()
             ins.append(inp)
-            layer_input = torch.nn.functional.relu(layer(inp))
+            layer_input = F.relu(layer(inp))
             outs.append(layer_input)
 
         # Final layer
         layer_input = torch.cat(outs, dim=-1)
         ins.append(layer_input)
-        probs = torch.softmax(self.output_layer(torch.cat(outs, dim=-1)), -1)
+        inp = torch.cat(outs, dim=-1)
+        probs = torch.softmax(self.output_layer(inp), -1)
         outs.append(probs)
 
         return ins, outs
@@ -73,11 +78,15 @@ class AesopDataset(torch.utils.data.Dataset):
 def update_weights(model, inputs, outputs, target, lr):
     for i, (inp, out) in enumerate(zip(inputs, outputs)):
         if i == len(inputs) - 1:
+            if lr < 0:
+                # Do not update classifier layer on negative data
+                continue
             dgdo = -out.clone()
             dgdo[:, target] += 1
             layer = model.output_layer
         else:
-            dgdo = 2 * out
+            prob = torch.sigmoid(out.norm() - THRESHOLD)
+            dgdo = (1 - prob) * out
             layer = model.layers[i]
         dodw = inp
         dodb = 1 # Just for completeness
@@ -86,7 +95,7 @@ def update_weights(model, inputs, outputs, target, lr):
 
 def compute_goodness(outputs, target):
     layer_outs, probs = outputs[:-1], outputs[-1]
-    layer_goodnesses = [out.norm() for out in layer_outs]
+    layer_goodnesses = [torch.sigmoid(out.norm() - THRESHOLD) for out in layer_outs]
     classifier_goodness = torch.log(probs[:, target])
     return layer_goodnesses, classifier_goodness
 
@@ -98,8 +107,8 @@ def train(args):
     dataset = AesopDataset(device=args.device)
     model = ReLUModel(
         vocab_dim=len(dataset.vocab),
-        hidden_layers=3,
-        hidden_units=2000
+        hidden_layers=args.hidden_layers,
+        hidden_units=args.hidden_units
     ).to(args.device)
     data_loader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False)
     writer = SummaryWriter("logs")
@@ -145,7 +154,9 @@ def load_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--n-epochs", type=int, default=10)
     parser.add_argument("--teacher-forcing", action="store_true")
-    parser.add_argument("--learning-rate", type=float, default=0.0001)
+    parser.add_argument("--learning-rate", type=float, default=0.001)
+    parser.add_argument("--hidden-units", type=int, default=2000)
+    parser.add_argument("--hidden-layers", type=int, default=3)
     parser.add_argument("--log-every", type=int, default=100)
     parser.add_argument("--device", type=str, default="cpu")
     args = parser.parse_args()
