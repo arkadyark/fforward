@@ -1,9 +1,9 @@
 import torch
+from tokenizer import Tokenizer
 
 class AesopDataset(torch.utils.data.Dataset):
-    VOCAB = "abcdefghijklmnopqrstuvwxyz ;,."
     def __init__(self, data_path="aesop.txt", device="cpu"):
-        self.vocab = {c: i for i, c in enumerate(self.VOCAB)}
+        self.tokenizer = Tokenizer()
         self.device = device
         self.samples = []
         with open(data_path) as f:
@@ -20,7 +20,7 @@ class AesopDataset(torch.utils.data.Dataset):
 
     def _make_samples(self, lines):
         fable = " ".join(lines).lower()
-        string = [self.vocab[c] for c in fable if c in self.vocab]
+        string = self.tokenizer.encode(fable)
         return [
             (torch.tensor(string[i:i+10], device=self.device),
              torch.tensor(string[i+10], device=self.device))
