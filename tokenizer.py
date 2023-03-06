@@ -1,4 +1,4 @@
-class Tokenizer():
+class Tokenizer:
     VOCAB = "abcdefghijklmnopqrstuvwxyz ;,."
 
     def __init__(self):
@@ -9,6 +9,4 @@ class Tokenizer():
         return [self.vocab[c] for c in text if c in self.vocab]
 
     def decode(self, tokens):
-        return ''.join([self.i2c.get(c, '') for c in text])
-
-
+        return "".join([self.i2c.get(c, "") for c in tokens])

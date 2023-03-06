@@ -1,6 +1,8 @@
 import torch
 import torch.nn.functional as F
 
+from tokenizer import Tokenizer
+
 EPSILON = 1e-12
 
 class ReLUModel(torch.nn.Module):
@@ -41,12 +43,12 @@ class ReLUModel(torch.nn.Module):
     def generate(self, prompt, max_len=100):
         tokenizer = Tokenizer()
         prompt_tokens = tokenizer.encode(prompt)
-        prompt_suffix = tokenizer.encode(prompt)[-input_len:]
+        prompt_suffix = tokenizer.encode(prompt)[-self.input_len:]
 
         inputs = torch.tensor(prompt_suffix, device=self.device)
-        output = [prompt_tokens]
+        outputs = [prompt_tokens]
         while len(output) < max_len:
-            inputs = outputs[-input_len:]
+            inputs = outputs[-self.input_len:]
             probs = self.forward(inputs)
             output = torch.multinomial(probs, 1)
 
